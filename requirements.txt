@@ -1,0 +1,11 @@
+langchain
+langchain-google-genai
+langchain-community
+faiss-cpu
+langgraph
+python-dotenv
+requests
+pydantic
+pydantic-settings
+google-generativeai
+google-generativeai

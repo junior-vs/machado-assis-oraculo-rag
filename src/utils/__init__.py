@@ -1,0 +1,5 @@
+"""Utilitários do projeto."""
+
+from src.utils.logging import LoggingManager, get_logger
+
+__all__ = ["LoggingManager", "get_logger"]
