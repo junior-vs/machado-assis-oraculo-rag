@@ -206,9 +206,13 @@ class RAGNodes:
         
         logger.info("Resposta gerada com sucesso")
         
-        # CORRIGIDO: Atualizar histórico e retornar no estado
+        
+        
+        user_msg = state.get("original_question") or state["question"]
+
         updated_history = list(history) if history else []
-        updated_history.append(("Usuário", state["question"]))
+#        updated_history.append(("Usuário", state["question"]))
+        updated_history.append(("Usuário", user_msg)) # <--- Alterado aqui
         updated_history.append(("Assistente", generation))
         
         return {
