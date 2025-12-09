@@ -4,7 +4,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 
 from src.domain.state import GraphState
-from src.domain.guardrails_check import GradeDocuments
+from src.domain.guardrails_check import InputGuardrail, RetrievalGrader
 from src.infrastructure.llm_factory import LLMFactory
 from src.utils.logging import get_logger
 
@@ -20,9 +20,11 @@ class RAGNodes:
         self.rewriter_chain = self._build_rewriter_chain()
         self.guardrail_chain = self._build_guardrail_chain()
 
+
+
     def _build_grader_chain(self):
         # Usa function_calling com gpt-3.5-turbo (não suporta json_schema)
-        llm_structured = self.llm.with_structured_output(GradeDocuments, method="function_calling")
+        llm_structured = self.llm.with_structured_output(RetrievalGrader, method="function_calling")
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um especialista em avaliar relevância de documentos. 
 Sua tarefa é determinar se um documento recuperado responde ou é relevante para a pergunta do usuário.
@@ -122,7 +124,8 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
 
     # 2. Construção da Chain de Guardrail
     def _build_guardrail_chain(self):
-        llm_structured = self.llm.with_structured_output(GradeDocuments, method="function_calling")
+        #llm_structured = self.llm.with_structured_output(GradeDocuments, method="function_calling")
+        llm_structured = self.llm.with_structured_output(InputGuardrail, method="function_calling")
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um guardião de conhecimento sobre o livro 'Dom Casmurro' de Machado de Assis.
