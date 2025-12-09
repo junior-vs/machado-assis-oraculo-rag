@@ -1,6 +1,6 @@
 # Machado Oráculo
 
-A modular Retrieval-Augmented Generation (RAG) system with automatic query correction, powered by LangChain and LangGraph. Answers literary questions about Machado de Assis' masterpiece "Memórias Póstumas de Brás Cubas" with intelligent document grading and query refinement.
+A modular Retrieval-Augmented Generation (RAG) system with automatic query correction, powered by LangChain and LangGraph. Answers literary questions about Machado de Assis' masterpiece "Dom Casmurro" with intelligent document grading and query refinement.
 
 ## Features
 
@@ -71,17 +71,63 @@ Run the interactive chat interface:
 uv run python -m src.main
 ```
 
+**Execution options with different logging levels:**
+
+```bash
+# Default (INFO level)
+uv run python -m src.main
+
+# Debug mode (very detailed, includes all processing steps)
+uv run python -m src.main --debug
+
+# Debug with audit logging (JSON format for analysis)
+uv run python -m src.main --debug --audit
+
+# Warning level (only warnings and errors)
+uv run python -m src.main --warning
+
+# Error level (only critical errors)
+uv run python -m src.main --error
+
+# Info level (explicit, same as default)
+uv run python -m src.main --info
+```
+
+**Logging options:**
+- `--debug, -d`: Enable DEBUG level logging (very detailed)
+- `--info, -i`: Enable INFO level logging (default)
+- `--warning, -w`: Enable WARNING level logging (only warnings+)
+- `--error, -e`: Enable ERROR level logging (only errors)
+- `--audit`: Generate audit.jsonl with detailed operation history
+
+**Log files generated:**
+- `logs/app.log`: Main application log with all events (rotates at 10 MB)
+- `logs/audit.jsonl`: Structured audit log in JSON Lines format (when `--audit` is used)
+
 Example questions:
 
 ```
-🗣️  Sua pergunta: Quem é Brás Cubas?
-🗣️  Sua pergunta: O que é Memórias Póstumas de Brás Cubas?
-🗣️  Sua pergunta: Qual é o estilo literário de Machado de Assis?
+🗣️  Sua pergunta: Quem é Bento Santiago (Dom Casmurro)?
+🗣️  Sua pergunta: Quem é Capitu em Dom Casmurro?
+🗣️  Sua pergunta: Qual é o tema central de Dom Casmurro?
 ```
 
 Type `sair`, `exit`, or `quit` to close the application.
 
-### Programmatic Use
+### Overview
+
+**Machado Oráculo - Dom Casmurro Edition**
+
+This RAG system is specifically designed to answer questions about Machado de Assis' *Dom Casmurro*, one of the masterpieces of Brazilian literature.
+
+**Dom Casmurro** (1899) is one of Machado de Assis' most celebrated novels. It tells the story of Bento Santiago, who looks back on his life and romance with Capitu, questioning whether she was unfaithful to him. The novel is renowned for:
+
+- **Unreliable narrator**: Bento's perspective shapes how readers interpret events
+- **Psychological depth**: Exploration of jealousy, memory, and human relationships
+- **Literary innovation**: One of the first modernist novels in Brazilian literature
+- **Philosophical themes**: Fate, free will, and the nature of truth
+
+This RAG system is trained to answer questions about characters, themes, plot, and literary analysis of Dom Casmurro.
 
 ```python
 from src.infrastructure.vector_store import VectorStoreRepository
@@ -96,7 +142,7 @@ graph_builder = RAGGraphBuilder(retriever)
 app = graph_builder.build()
 
 # Execute a query
-question = "Quem é Brás Cubas?"
+question = "Quem é Bento Santiago em Dom Casmurro?"
 inputs = {"question": question, "loop_count": 0}
 
 for output in app.stream(inputs):
@@ -172,6 +218,47 @@ machado_oraculo/
 
 ## Configuration
 
+### Logging Configuration
+
+The system provides centralized logging management through `src/utils/logging.py`:
+
+**Default behavior:**
+- **Console output**: INFO level with color formatting
+- **File logging** (`logs/app.log`): All events with rotation at 10 MB
+- **Audit logging** (`logs/audit.jsonl`): Optional JSON-structured audit trail
+
+**Log levels (from least to most verbose):**
+- `ERROR`: Only critical errors
+- `WARNING`: Errors and warnings
+- `INFO`: General information (default)
+- `DEBUG`: Detailed debugging information
+
+**Runtime log level control:**
+Use command-line flags to change logging verbosity:
+
+```bash
+# Very detailed (for debugging RAG pipeline issues)
+uv run python -m src.main --debug
+
+# Normal operation (recommended for production)
+uv run python -m src.main --info
+
+# Minimal output (only important issues)
+uv run python -m src.main --warning
+```
+
+**Audit logging:**
+Enable structured audit logging for compliance or analysis:
+
+```bash
+uv run python -m src.main --debug --audit
+```
+
+This generates `logs/audit.jsonl` with JSON-formatted operation records that can be:
+- Parsed by monitoring systems
+- Analyzed for performance metrics
+- Archived for compliance requirements
+
 Settings are managed through `src/config.py` and loaded from `.env`:
 
 | Variable | Default | Description |
@@ -230,6 +317,22 @@ uv run python test_rag.py
 - A code editor with Python support (VS Code, PyCharm, etc.)
 
 ## Troubleshooting
+
+### Debug Mode for Issue Investigation
+
+If you encounter unexpected behavior, use debug logging to see detailed processing:
+
+```bash
+# Detailed logging of all RAG pipeline steps
+uv run python -m src.main --debug
+
+# With audit trail for complete operation history
+uv run python -m src.main --debug --audit
+```
+
+Check the generated log files:
+- `logs/app.log` - Full application log
+- `logs/audit.jsonl` - Structured audit trail (if `--audit` was used)
 
 ### API Key Issues
 
@@ -304,7 +407,7 @@ uv run python -m src.main
 Exemplos de perguntas:
 
 ```
-🗣️  Sua pergunta: Quem é Brás Cubas?
+🗣️  Sua pergunta: Quem é Bento Santiago em Dom Casmurro?
 🗣️  Sua pergunta: Qual é o tema central de Quincas Borba?
 🗣️  Sua pergunta: Fale sobre o pessimismo em Machado de Assis
 ```
@@ -320,7 +423,7 @@ Then in the Python REPL:
 ```python
 from src.main import run_rag_pipeline
 
-result = run_rag_pipeline("Quem é Brás Cubas?")
+result = run_rag_pipeline("Quem é Bento Santiago em Dom Casmurro?")
 print(result['generation'])
 ```
 

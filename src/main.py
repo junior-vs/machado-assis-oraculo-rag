@@ -126,7 +126,7 @@ def main():
                 continue
 
             query_count += 1
-            logger.info(f"[QUERY #{query_count}] Pergunta: {user_input}")
+            logger.info(f"[QUERY #{query_count}] \nPergunta: {user_input}")
             print("-" * 30)
             
             # Executar grafo

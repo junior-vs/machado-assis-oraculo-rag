@@ -14,7 +14,7 @@ repo = VectorStoreRepository()
 retriever = repo.get_retriever(k=5)
 
 questions = [
-    "Quem é Brás Cubas?",
+    "Quem é Bento Santiago em Dom Casmurro?",
     "Machado de Assis",
     "romance brasileiro",
 ]

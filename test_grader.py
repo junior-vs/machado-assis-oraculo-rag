@@ -16,7 +16,7 @@ retriever = repo.get_retriever(k=3)
 nodes = RAGNodes(retriever)
 
 # Teste de grading
-question = "Quem é Brás Cubas?"
+question = "Quem é Bento Santiago em Dom Casmurro?"
 docs = retriever.invoke(question)
 
 print("=" * 70)

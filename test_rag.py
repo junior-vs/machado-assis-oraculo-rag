@@ -40,9 +40,9 @@ def test_rag_pipeline():
 
     # Perguntas de teste
     test_questions = [
-        "Quem é Brás Cubas?",
-        "O que é Memórias Póstumas de Brás Cubas?",
-        "Qual é o estilo literário de Machado de Assis?",
+        "Quem é Bento Santiago em Dom Casmurro?",
+        "Qual é o tema central de Dom Casmurro?",
+        "Quem é Capitu em Dom Casmurro?",
     ]
 
     # Testar cada pergunta

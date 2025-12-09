@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     temperature: float = 0.0
     chunk_size: int = 1000
     chunk_overlap: int = 200
-    book_url: str = "https://www.gutenberg.org/files/55752/55752-0.txt"
-    storage_path: str = "machado.txt"
+    book_url: str = "https://www.gutenberg.org/files/55752/55752-0.txt"  # Dom Casmurro
+    storage_path: str = "dom_casmurro.txt"
     faiss_index_path: str = "vectorstore"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
