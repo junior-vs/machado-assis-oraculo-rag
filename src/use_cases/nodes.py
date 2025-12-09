@@ -2,12 +2,10 @@ from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-
 from src.domain.state import GraphState
-from src.domain.guardrails_check import InputGuardrail, RetrievalGrader
+from src.domain.guardrails_check import HallucinationGrade, InputGuardrail, RetrievalGrader
 from src.infrastructure.llm_factory import LLMFactory
 from src.utils.logging import get_logger
-
 
 logger = get_logger()
 
@@ -19,11 +17,24 @@ class RAGNodes:
         self.rag_chain = self._build_rag_chain()
         self.rewriter_chain = self._build_rewriter_chain()
         self.guardrail_chain = self._build_guardrail_chain()
+        self.hallucination_chain = self._build_hallucination_chain()
 
-
+    def _build_hallucination_chain(self):
+        llm_structured = self.llm.with_structured_output(HallucinationGrade, method="function_calling")
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """Você é um avaliador de alucinações para um assistente de IA.
+            Sua tarefa é verificar se a RESPOSTA gerada é baseada e apoiada pelos DOCUMENTOS fornecidos.
+            
+            Regras:
+            - Se a resposta contiver informações que NÃO estão nos documentos: Responda 'nao' (alucinação).
+            - Se a resposta for fiel aos documentos: Responda 'sim' (ancorada/grounded).
+            - Não julgue se a resposta é verdadeira no mundo real, apenas se ela é suportada pelo texto fornecido.
+            """),
+            ("human", "Documentos (Fatos):\n{documents}\n\nResposta Gerada:\n{generation}")
+        ])
+        return prompt | llm_structured
 
     def _build_grader_chain(self):
-        # Usa function_calling com gpt-3.5-turbo (não suporta json_schema)
         llm_structured = self.llm.with_structured_output(RetrievalGrader, method="function_calling")
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um especialista em avaliar relevância de documentos. 
@@ -65,8 +76,63 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
         ])
         return prompt | self.llm | StrOutputParser()
 
-    # --- NÓS DO GRAFO ---
+    def _build_guardrail_chain(self):
+        llm_structured = self.llm.with_structured_output(InputGuardrail, method="function_calling")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """Você é um guardião de conhecimento sobre o livro 'Dom Casmurro' de Machado de Assis.
+            Sua função é filtrar perguntas que contenham premissas falsas, erros factuais graves ou que sejam sobre outros livros/assuntos.
+            
+            Exemplos de REJEIÇÃO:
+            - "Quem é Bento Santiago em Dom Casmurro?" (Correto)
+            - "Quem é Capitu?" (Correto, personagem de Dom Casmurro)
+            - "Qual é o tema de Dom Casmurro?" (Correto)
+            - "Qual a receita de bolo de cenoura?" (Fora do contexto)
+            
+            Exemplos de APROVAÇÃO:
+            - "Quem foi Virgília?"
+            - "Por que ele dedicou o livro ao verme?"
+            
+            Analise a pergunta e determine se ela é válida para processamento.
+            Analise se a pergunta é válida (sobre o livro, sem erros factuais graves).
     
+            Retorne:
+                - is_valid: true se a pergunta é válida, false caso contrário
+                - binary_score: 'sim' se válida, 'não' se inválida
+                - reason: explicação breve se rejeitada
+            
+            """),
+            ("human", "Pergunta: {question}")
+        ])
+        return prompt | llm_structured
+
+    def validate_generation(self, state: GraphState):
+        logger.debug("🔍 Verificando alucinações (Output Guardrail)...")
+        question = state["question"]
+        documents = state["documents"]
+        generation = state["generation"]
+
+        try:
+            context_text = "\n\n".join([d.page_content for d in documents])
+            
+            score = self.hallucination_chain.invoke({
+                "documents": context_text,
+                "generation": generation
+            })
+            
+            is_grounded = score.binary_score.lower() == "sim"
+            
+            if is_grounded:
+                logger.info("✅ Resposta validada: Fiel ao contexto.")
+                return {"generation": generation, "hallucination": False}
+            else:
+                logger.warning(f"⚠️ Alucinação detectada: {score.reason}")
+                return {"generation": generation, "hallucination": True}
+                
+        except Exception as e:
+            logger.error(f"Erro na validação de alucinação: {e}")
+            return {"generation": generation, "hallucination": False}
+  
     def retrieve(self, state: GraphState):
         logger.debug(f"Buscando documentos para: {state['question'][:500]}...")
         documents = self.retriever.invoke(state["question"])
@@ -111,7 +177,6 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
 
     def transform_query(self, state: GraphState):
         logger.debug(f"Reescrevendo pergunta (tentativa {state.get('loop_count', 0) + 1})")
-        # Usar pergunta original como base (armazenada no estado)
         original_question = state.get("original_question", state["question"])
         new_q = self.rewriter_chain.invoke({
             "original_question": original_question,
@@ -120,43 +185,6 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
         logger.info(f"Pergunta reescrita: \n {new_q[:500]}...")
         return {"question": new_q, "loop_count": state.get("loop_count", 0) + 1}
 
- 
-
-    # 2. Construção da Chain de Guardrail
-    def _build_guardrail_chain(self):
-        #llm_structured = self.llm.with_structured_output(GradeDocuments, method="function_calling")
-        llm_structured = self.llm.with_structured_output(InputGuardrail, method="function_calling")
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """Você é um guardião de conhecimento sobre o livro 'Dom Casmurro' de Machado de Assis.
-            Sua função é filtrar perguntas que contenham premissas falsas, erros factuais graves ou que sejam sobre outros livros/assuntos.
-            
-            Exemplos de REJEIÇÃO:
-            - "Quem é Bento Santiago em Dom Casmurro?" (Correto)
-            - "Quem é Capitu?" (Correto, personagem de Dom Casmurro)
-            - "Qual é o tema de Dom Casmurro?" (Correto)
-            - "Qual a receita de bolo de cenoura?" (Fora do contexto)
-            
-            Exemplos de APROVAÇÃO:
-            - "Quem foi Virgília?"
-            - "Por que ele dedicou o livro ao verme?"
-            
-            Analise a pergunta e determine se ela é válida para processamento.
-            Analise se a pergunta é válida (sobre o livro, sem erros factuais graves).
-    
-            Retorne:
-                - is_valid: true se a pergunta é válida, false caso contrário
-                - binary_score: 'sim' se válida, 'não' se inválida
-                - reason: explicação breve se rejeitada
-            
-            """),
-            ("human", "Pergunta: {question}")
-        ])
-        return prompt | llm_structured
-
-    # ... (Manter métodos existentes: retrieve, grade_documents, etc) ...
-
-    # 3. Novo Nó do Grafo
     def guardrails_check(self, state: GraphState):
         logger.debug("🛡️ Verificando Guardrails da pergunta...")
         question = state["question"]
@@ -166,10 +194,9 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
             
             if outcome.is_valid:
                 logger.info("✅ Pergunta aprovada pelo Guardrail.")
-                return {"question": question, "generation": None} # Continua normal
+                return {"question": question, "generation": None}
             else:
                 logger.warning(f"⛔ Pergunta bloqueada: {outcome.reason}")
-                # Definimos a 'generation' com a recusa para exibir ao utilizador
                 return {
                     "question": question, 
                     "generation": f"Não posso responder a isso. {outcome.reason}"
@@ -177,6 +204,4 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
                 
         except Exception as e:
             logger.error(f"Erro no guardrail: {e}")
-            # Em caso de erro técnico, optamos por "fail open" (deixar passar) ou "fail closed".
-            # Aqui vamos deixar passar para não travar o sistema.
             return {"question": question}
