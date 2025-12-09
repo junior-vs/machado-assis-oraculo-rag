@@ -1,6 +1,7 @@
 import sys
 import argparse
 from pathlib import Path
+import uuid
 
 # Add the project root to sys.path
 project_root = Path(__file__).parent.parent
@@ -99,6 +100,7 @@ def main():
         logger.error(f"Erro ao inicializar banco de dados: {e}", exc_info=True)
         return
 
+    
     # 2. Construção do Grafo
     try:
         logger.debug("Construindo grafo RAG...")
@@ -112,8 +114,20 @@ def main():
     logger.info("\n✅ Sistema pronto! (Digite 'sair' para encerrar)")
     logger.info("="*50)
 
+    # Criar um ID para esta sessão de conversa
+    thread_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
+    logger.info(f"Sessão iniciada ID: {thread_id}")
+
     # 3. Loop de Interação (CLI)
     query_count = 0
+
+    # Variável local para manter o histórico na memória da CLI
+    # (O LangGraph guarda internamente, mas precisamos reinjetar para o prompt formatado)
+    # CORRIGIDO: Implementado limite máximo de histórico para evitar crescimento infinito
+    local_history = []
+    MAX_HISTORY = 10  # Manter apenas as últimas 5 rodadas (10 mensagens alternando)
+
     while True:
         try:
             user_input = input("\n🗣️  Sua pergunta: ").strip()
@@ -130,10 +144,25 @@ def main():
             print("-" * 30)
             
             # Executar grafo
-            inputs = {"question": user_input, "loop_count": 0}
+            inputs = {
+                "question": user_input, 
+                "loop_count": 0,
+                "chat_history": local_history 
+            }
             
-            final_state = app.invoke(inputs)
+            final_state = app.invoke(inputs, config=config)            
             
+            response = final_state['generation']
+            
+            # CORRIGIDO: Recuperar histórico atualizado do estado do grafo
+            # (O nó generate() agora retorna o histórico atualizado)
+            local_history = final_state.get('chat_history', [])
+            
+            # CORRIGIDO: Implementar limite de histórico para evitar crescimento infinito
+            if len(local_history) > MAX_HISTORY:
+                local_history = local_history[-MAX_HISTORY:]
+                logger.debug(f"Histórico truncado a {MAX_HISTORY} mensagens")
+
             # Log da resposta com estrutura
             logger.info(
                 f"[QUERY #{query_count}] Resposta gerada",

@@ -59,6 +59,7 @@ class RAGNodes:
 
     def _build_rag_chain(self):
         # MUDANÇA: Prompt mais rigoroso para evitar conversa fiada e conhecimento externo
+        # CORRIGIDO: Adicionado {chat_history} ao template para usar o histórico de conversa
         prompt = PromptTemplate(
             template="""Você é um assistente que responde perguntas sobre o livro 'Dom Casmurro' baseando-se EXCLUSIVAMENTE no contexto fornecido abaixo.
             
@@ -66,6 +67,10 @@ class RAGNodes:
             1. Use APENAS as informações do Contexto abaixo. Não use seu conhecimento prévio.
             2. Não inicie a resposta dizendo "Como especialista" ou "De acordo com o texto". Vá direto ao ponto.
             3. Se a informação não estiver no contexto, diga "Não encontrei essa informação no trecho recuperado."
+            4. Considere o histórico de conversa anterior para manter consistência nas respostas.
+            
+            Histórico de Conversa (se houver):
+            {chat_history}
             
             Contexto: 
             {context} 
@@ -74,7 +79,7 @@ class RAGNodes:
             {question}
             
             Resposta:""",
-            input_variables=["context", "question"]
+            input_variables=["context", "question", "chat_history"]
         )
         return prompt | self.llm | StrOutputParser()
 
@@ -186,14 +191,30 @@ class RAGNodes:
     def generate(self, state: GraphState):
         logger.debug("Gerando resposta...")
         context_text = "\n\n".join([d.page_content for d in state["documents"]])
+
+        # Recupera o histórico do estado, ou lista vazia se não existir
+        history = state.get("chat_history", [])
+
+        # Formata o histórico para string (simples)
+        history_str = "\n".join([f"{role}: {msg}" for role, msg in history]) if history else "(Nenhum histórico anterior)"
         
         generation = self.rag_chain.invoke({
             "context": context_text, 
-            "question": state["question"]
+            "question": state["question"],
+            "chat_history": history_str # Passa o histórico
         })
         
         logger.info("Resposta gerada com sucesso")
-        return {"generation": generation}
+        
+        # CORRIGIDO: Atualizar histórico e retornar no estado
+        updated_history = list(history) if history else []
+        updated_history.append(("Usuário", state["question"]))
+        updated_history.append(("Assistente", generation))
+        
+        return {
+            "generation": generation,
+            "chat_history": updated_history
+        }
 
     def transform_query(self, state: GraphState):
         logger.debug(f"Reescrevendo pergunta (tentativa {state.get('loop_count', 0) + 1})")

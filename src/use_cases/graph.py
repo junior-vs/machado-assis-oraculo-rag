@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from src.domain.state import GraphState
 from src.use_cases.nodes import RAGNodes
+from langgraph.checkpoint.memory import MemorySaver  # <--- Importante para a Memória
 
 class RAGGraphBuilder:
     def __init__(self, retriever):
@@ -46,6 +47,7 @@ class RAGGraphBuilder:
         return "generate"
 
     def build(self):
+        
         workflow = StateGraph(GraphState)
 
         # Adiciona nós (Mantém os anteriores e adiciona o novo)
@@ -96,5 +98,5 @@ class RAGGraphBuilder:
                 "end": END                            # Aceita ou desiste
             }
         )
-
-        return workflow.compile()
+        memory = MemorySaver()
+        return workflow.compile(checkpointer=memory)
