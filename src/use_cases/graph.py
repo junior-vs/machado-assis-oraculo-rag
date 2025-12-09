@@ -6,6 +6,14 @@ class RAGGraphBuilder:
     def __init__(self, retriever):
         self.nodes = RAGNodes(retriever)
 
+# 1. Nova lógica condicional
+    def _check_guardrail_result(self, state: GraphState):
+        # Se já tivermos uma "generation" nesta etapa, significa que o guardrail rejeitou
+        # e preencheu a resposta com o motivo do erro.
+        if state.get("generation"):
+            return "end" # Encerra o fluxo
+        return "retrieve" # Continua para a busca
+
     def _store_original_question(self, state: GraphState):
         """Armazena a pergunta original no estado para referência durante reescrita."""
         if "original_question" not in state:
@@ -25,6 +33,7 @@ class RAGGraphBuilder:
 
         # Adiciona nós
         workflow.add_node("store_question", self._store_original_question)
+        workflow.add_node("guardrails", self.nodes.guardrails_check) # <--- NOVO NÓ
         workflow.add_node("retrieve", self.nodes.retrieve)
         workflow.add_node("grade_documents", self.nodes.grade_documents)
         workflow.add_node("generate", self.nodes.generate)
@@ -32,10 +41,23 @@ class RAGGraphBuilder:
 
         # Define fluxo
         workflow.set_entry_point("store_question")
-        workflow.add_edge("store_question", "retrieve")
+        
+        # Fluxo alterado: store -> guardrails -> (decisão)
+        workflow.add_edge("store_question", "guardrails")
+        
+        # Condicional após Guardrails
+        workflow.add_conditional_edges(
+            "guardrails",
+            self._check_guardrail_result,
+            {
+                "end": END,        # Se falhar no guardrail, sai direto
+                "retrieve": "retrieve" # Se passar, busca documentos
+            }
+        )
+
+        # O resto segue igual
         workflow.add_edge("retrieve", "grade_documents")
         
-        # Lógica condicional
         workflow.add_conditional_edges(
             "grade_documents",
             self._decide_next_step,

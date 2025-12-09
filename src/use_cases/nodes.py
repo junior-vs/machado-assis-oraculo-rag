@@ -4,18 +4,12 @@ from langchain_core.output_parsers import StrOutputParser
 
 
 from src.domain.state import GraphState
+from src.domain.guardrails_check import GradeDocuments
 from src.infrastructure.llm_factory import LLMFactory
 from src.utils.logging import get_logger
 
 
 logger = get_logger()
-
-
-class GradeDocuments(BaseModel):
-    binary_score: str = Field(
-        description="Documento é relevante para a pergunta? 'sim' ou 'não'"
-    )
-
 
 class RAGNodes:
     def __init__(self, retriever):
@@ -128,7 +122,7 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
 
     # 2. Construção da Chain de Guardrail
     def _build_guardrail_chain(self):
-        llm_structured = self.llm.with_structured_output(GuardrailOutcome, method="function_calling")
+        llm_structured = self.llm.with_structured_output(GradeDocuments, method="function_calling")
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um guardião de conhecimento sobre o livro 'Dom Casmurro' de Machado de Assis.
@@ -144,7 +138,15 @@ Reescreva de forma mais clara e específica para busca sobre o livro:"""),
             - "Quem foi Virgília?"
             - "Por que ele dedicou o livro ao verme?"
             
-            Analise a pergunta e determine se ela é válida para processamento."""),
+            Analise a pergunta e determine se ela é válida para processamento.
+            Analise se a pergunta é válida (sobre o livro, sem erros factuais graves).
+    
+            Retorne:
+                - is_valid: true se a pergunta é válida, false caso contrário
+                - binary_score: 'sim' se válida, 'não' se inválida
+                - reason: explicação breve se rejeitada
+            
+            """),
             ("human", "Pergunta: {question}")
         ])
         return prompt | llm_structured
