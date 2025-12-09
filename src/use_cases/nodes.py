@@ -21,14 +21,21 @@ class RAGNodes:
 
     def _build_hallucination_chain(self):
         llm_structured = self.llm.with_structured_output(HallucinationGrade, method="function_calling")
+        
+        # MUDANÇA: Adicionamos instruções para ignorar estilo e focar em fatos
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Você é um avaliador de alucinações para um assistente de IA.
-            Sua tarefa é verificar se a RESPOSTA gerada é baseada e apoiada pelos DOCUMENTOS fornecidos.
+            ("system", """Você é um avaliador de consistência factual.
+            Sua tarefa é verificar se a RESPOSTA é sustentada pelos DOCUMENTOS.
+
+            Diretrizes de Julgamento:
+            - Ignore apresentações como "O texto diz que..." ou tom de especialista. Foque nos FATOS.
+            - Se a resposta contiver fatos (locais, nomes, eventos) que NÃO estão nos documentos -> Responda 'nao' (Alucinação).
+            - Se a resposta fizer inferências lógicas óbvias baseadas no texto -> Responda 'sim'.
             
-            Regras:
-            - Se a resposta contiver informações que NÃO estão nos documentos: Responda 'nao' (alucinação).
-            - Se a resposta for fiel aos documentos: Responda 'sim' (ancorada/grounded).
-            - Não julgue se a resposta é verdadeira no mundo real, apenas se ela é suportada pelo texto fornecido.
+            Exemplo de ERRO (Alucinação):
+            Docs: "Bentinho foi à casa."
+            Resp: "Bentinho foi à casa amarela." (A cor não está no texto).
+            
             """),
             ("human", "Documentos (Fatos):\n{documents}\n\nResposta Gerada:\n{generation}")
         ])
@@ -38,22 +45,35 @@ class RAGNodes:
         llm_structured = self.llm.with_structured_output(RetrievalGrader, method="function_calling")
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um especialista em avaliar relevância de documentos. 
-Sua tarefa é determinar se um documento recuperado responde ou é relevante para a pergunta do usuário.
+            Sua tarefa é determinar se um documento recuperado responde ou é relevante para a pergunta do usuário.
 
-Critérios de relevância:
-- O documento contém informações sobre o tópico?
-- O documento pode ajudar a responder a pergunta?
-- Existe qualquer conexão temática?
+            Critérios de relevância:
+            - O documento contém informações sobre o tópico?
+            - O documento pode ajudar a responder a pergunta?
+            - Existe qualquer conexão temática?
 
-Responda 'sim' se houver qualquer relevância, 'nao' apenas se for completamente irrelevante."""),
+            Responda 'sim' se houver qualquer relevância, 'nao' apenas se for completamente irrelevante."""),
             ("human", "Pergunta: {question}\n\nDocumento recuperado:\n{document}\n\nEste documento é relevante para a pergunta? Responda 'sim' ou 'nao'.")
         ])
         return prompt | llm_structured
 
     def _build_rag_chain(self):
+        # MUDANÇA: Prompt mais rigoroso para evitar conversa fiada e conhecimento externo
         prompt = PromptTemplate(
-            template="""Você é um especialista em Machado de Assis. Use o contexto: {context} 
-            para responder à pergunta: {question}.""",
+            template="""Você é um assistente que responde perguntas sobre o livro 'Dom Casmurro' baseando-se EXCLUSIVAMENTE no contexto fornecido abaixo.
+            
+            Regras:
+            1. Use APENAS as informações do Contexto abaixo. Não use seu conhecimento prévio.
+            2. Não inicie a resposta dizendo "Como especialista" ou "De acordo com o texto". Vá direto ao ponto.
+            3. Se a informação não estiver no contexto, diga "Não encontrei essa informação no trecho recuperado."
+            
+            Contexto: 
+            {context} 
+            
+            Pergunta: 
+            {question}
+            
+            Resposta:""",
             input_variables=["context", "question"]
         )
         return prompt | self.llm | StrOutputParser()
@@ -61,17 +81,17 @@ Responda 'sim' se houver qualquer relevância, 'nao' apenas se for completamente
     def _build_rewriter_chain(self):
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Você é um especialista em reformular perguntas sobre "Dom Casmurro" de Machado de Assis.
-Sua tarefa é reescrever a pergunta do usuário mantendo seu significado ORIGINAL, mas usando terminologia e contexto do livro.
+                Sua tarefa é reescrever a pergunta do usuário mantendo seu significado ORIGINAL, mas usando terminologia e contexto do livro.
 
-Dicas:
-- Mantenha o sentido original da pergunta
-- Use nomes de personagens, temas e conceitos do livro quando apropriado
-- Reescreva de forma mais clara e específica para melhorar a busca
-- Não mude a intenção da pergunta, apenas refine-a
+                Dicas:
+                - Mantenha o sentido original da pergunta
+                - Use nomes de personagens, temas e conceitos do livro quando apropriado
+                - Reescreva de forma mais clara e específica para melhorar a busca
+                - Não mude a intenção da pergunta, apenas refine-a
 
-Pergunta original: {original_question}
+                Pergunta original: {original_question}
 
-Reescreva de forma mais clara e específica para busca sobre o livro:"""),
+                Reescreva de forma mais clara e específica para busca sobre o livro:"""),
             ("human", "{question}")
         ])
         return prompt | self.llm | StrOutputParser()
